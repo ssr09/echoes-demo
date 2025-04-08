@@ -139,8 +139,7 @@ def get_embedding(text):
         return response
     
     response = api_call_with_retry(call_api)
-    #return response.data[0].embedding
-    return [0.0]
+    return response.data[0].embedding
 
 def generate_unique_id(quote, author):
     """Generate a unique ID for a quote based on its content and author."""
@@ -163,6 +162,30 @@ def is_valid_quote(quote, min_length=20):
         
     return True
 
+def evaluate_quote_quality(quote):
+    """Evaluate the quality of a quote on a scale of 1-10."""
+    def call_api():
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are a literary critic with expertise in evaluating quotes. Rate the following quote on a scale of 1-10 based on its timelessness, literary value, philosophical depth, and cultural impact. Try to not give value to the where the quote is from in the larger context and evaluate the quote primarily based on its own merit. Return ONLY a JSON object with fields 'score' (number 1-10) and 'reasoning' (brief justification)."},
+                {"role": "user", "content": f"Evaluate this quote on a scale of 1-10. Return ONLY the score and brief reasoning in JSON format: \"{quote}\""}
+            ]
+        )
+        return response
+    
+    try:
+        response = api_call_with_retry(call_api)
+        result = json.loads(response.choices[0].message.content)
+        score = result.get("score", 0)
+        reasoning = result.get("reasoning", "")
+        print(f"Quote quality score: {score}/10 - {reasoning[:50]}...")
+        return score, reasoning
+    except (json.JSONDecodeError, AttributeError) as e:
+        print(f"Error evaluating quote quality: {e}")
+        return 0, "Error in evaluation"
+
 def process_quote(quote, author, csv_writer, json_list, processed_hashes):
     """Process a single quote and save it directly to avoid memory buildup."""
     # Skip invalid quotes
@@ -174,6 +197,12 @@ def process_quote(quote, author, csv_writer, json_list, processed_hashes):
     quote_hash = hash(quote.strip().lower())
     if quote_hash in processed_hashes:
         print(f"Skipping duplicate quote: {quote[:40]}...")
+        return False
+    
+    # Evaluate quote quality
+    quality_score, quality_reasoning = evaluate_quote_quality(quote)
+    if quality_score < 7:
+        print(f"Skipping low-quality quote (score {quality_score}/10): {quote[:40]}...")
         return False
     
     processed_hashes.add(quote_hash)
@@ -199,6 +228,8 @@ def process_quote(quote, author, csv_writer, json_list, processed_hashes):
         "author": author,
         "explanation": explanation,
         "tags": tags,
+        "quality_score": quality_score,
+        "quality_reasoning": quality_reasoning,
         "upvotes": upvotes,
         "popularity": popularity,
         "embedding": embedding
@@ -217,6 +248,8 @@ def process_quote(quote, author, csv_writer, json_list, processed_hashes):
         author,
         explanation,
         json.dumps(tags),
+        quality_score,
+        quality_reasoning,
         upvotes,
         popularity,
         json.dumps(embedding)
@@ -269,7 +302,7 @@ def main():
     # Create CSV file and writer with the right quoting settings
     csv_file = open(output_csv, 'w', newline='', encoding='utf-8')
     csv_writer = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
-    csv_writer.writerow(["id", "quote", "author", "explanation", "tags", "upvotes", "popularity", "embedding"])
+    csv_writer.writerow(["id", "quote", "author", "explanation", "tags", "quality_score", "quality_reasoning", "upvotes", "popularity", "embedding"])
     
     # Initialize JSON list and track processed quotes to avoid duplicates
     quotes_data = []
