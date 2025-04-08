@@ -78,6 +78,14 @@
             font-size: 16px;
             color: #666;
         }
+        .author-link {
+            cursor: pointer;
+            text-decoration: underline;
+            color: #555;
+        }
+        .author-link:hover {
+            color: #333;
+        }
         .quote-actions {
             display: flex;
             justify-content: space-between;
@@ -155,6 +163,37 @@
             margin-top: 20px;
             display: none;
         }
+        .author-header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        .author-name {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .back-btn {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 5px 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #555;
+            cursor: pointer;
+        }
+        .back-btn:hover {
+            background-color: #e0e0e0;
+        }
+        .page-views > div {
+            display: none;
+        }
+        .page-views > div.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -163,18 +202,35 @@
         <p>Timeless wisdom from history's greatest thinkers</p>
     </header>
 
-    <div class="tabs">
-        <button class="tab active" data-tab="feed">Feed</button>
-        <button class="tab" data-tab="trending">Trending</button>
-        <button class="tab" data-tab="top">Top</button>
-    </div>
+    <div class="page-views">
+        <div id="main-view" class="active">
+            <div class="tabs">
+                <button class="tab active" data-tab="feed">Feed</button>
+                <button class="tab" data-tab="trending">Trending</button>
+                <button class="tab" data-tab="top">Top</button>
+            </div>
 
-    <div class="feed" id="feed-container">
-        <div class="loading">Loading quotes...</div>
-    </div>
+            <div class="feed" id="feed-container">
+                <div class="loading">Loading quotes...</div>
+            </div>
 
-    <div id="load-more">
-        <div class="loading">Loading more quotes...</div>
+            <div id="load-more">
+                <div class="loading">Loading more quotes...</div>
+            </div>
+        </div>
+
+        <div id="author-view">
+            <div class="author-header">
+                <h2 class="author-name" id="author-name">Author Name</h2>
+                <span class="back-btn" id="back-to-feed">← Back to Feed</span>
+            </div>
+            <div class="feed" id="author-quotes-container">
+                <div class="loading">Loading author quotes...</div>
+            </div>
+            <div id="author-load-more">
+                <div class="loading">Loading more quotes...</div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -182,9 +238,13 @@
         let allQuotes = [];
         let currentTab = 'feed';
         let currentPage = 1;
+        let currentAuthor = '';
+        let authorQuotes = [];
+        let authorCurrentPage = 1;
         const quotesPerPage = 10;
         let isLoading = false;
         let hasMoreQuotes = true;
+        let authorHasMoreQuotes = true;
         
         // Load quotes from the local JSON file
         async function loadQuotes() {
@@ -194,7 +254,16 @@
                     throw new Error('Failed to load quotes');
                 }
                 allQuotes = await response.json();
-                displayQuotes(true);
+                
+                // Check if we have an author in the URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const authorParam = urlParams.get('author');
+                
+                if (authorParam) {
+                    showAuthorPage(decodeURIComponent(authorParam));
+                } else {
+                    displayQuotes(true);
+                }
             } catch (error) {
                 console.error('Error loading quotes:', error);
                 document.getElementById('feed-container').innerHTML = `
@@ -247,45 +316,7 @@
                 const feedContainer = document.getElementById('feed-container');
                 
                 currentPageQuotes.forEach((quote, index) => {
-                    const quoteCard = document.createElement('div');
-                    quoteCard.className = 'quote-card';
-                    
-                    const tags = Array.isArray(quote.tags) 
-                        ? quote.tags.map(tag => `<span class="tag">${tag}</span>`).join('')
-                        : '';
-                    
-                    // Calculate the absolute index of the quote in the current display
-                    const absoluteIndex = startIndex + index;
-                    
-                    quoteCard.innerHTML = `
-                        <p class="quote-text">${quote.quote}</p>
-                        <p class="quote-author">— ${quote.author}</p>
-                        <div class="tag-list">${tags}</div>
-                        <div class="quote-actions">
-                            <div class="action-group">
-                                <button class="upvote-btn" data-id="${absoluteIndex}">
-                                    ▲ <span class="upvote-count">${quote.upvotes}</span>
-                                </button>
-                            </div>
-                            <div class="action-group">
-                                <button class="show-similar-btn" data-id="${absoluteIndex}">
-                                    Show Similar
-                                </button>
-                                <button class="explain-btn" data-id="${absoluteIndex}">
-                                    Explain
-                                </button>
-                            </div>
-                        </div>
-                        <div class="explanation" id="explanation-${absoluteIndex}">
-                            ${quote.explanation || 'No explanation available.'}
-                        </div>
-                        <div class="similar-quotes" id="similar-${absoluteIndex}">
-                            <h4>Similar Quotes</h4>
-                            <div class="similar-container"></div>
-                        </div>
-                    `;
-                    
-                    feedContainer.appendChild(quoteCard);
+                    feedContainer.appendChild(createQuoteCard(quote, startIndex + index));
                 });
                 
                 // Update loading state
@@ -293,27 +324,155 @@
                 document.getElementById('load-more').style.display = hasMoreQuotes ? 'block' : 'none';
                 
                 // Add event listeners to new elements
-                document.querySelectorAll('.upvote-btn').forEach(btn => {
-                    btn.addEventListener('click', handleUpvote);
-                });
-                
-                document.querySelectorAll('.explain-btn').forEach(btn => {
-                    btn.addEventListener('click', toggleExplanation);
-                });
-                
-                document.querySelectorAll('.show-similar-btn').forEach(btn => {
-                    btn.addEventListener('click', handleShowSimilar);
-                });
+                addEventListeners();
                 
                 // Increment current page for next load
                 currentPage++;
             }, 500); // Small delay to simulate loading
         }
         
+        // Display author quotes
+        function displayAuthorQuotes(reset = false) {
+            if (reset) {
+                const authorContainer = document.getElementById('author-quotes-container');
+                authorContainer.innerHTML = '';
+                authorCurrentPage = 1;
+                authorHasMoreQuotes = true;
+            }
+            
+            if (!authorHasMoreQuotes || isLoading) return;
+            
+            isLoading = true;
+            document.getElementById('author-load-more').style.display = 'block';
+            
+            setTimeout(() => {
+                // Calculate pagination for author quotes
+                const startIndex = (authorCurrentPage - 1) * quotesPerPage;
+                const endIndex = startIndex + quotesPerPage;
+                const currentPageQuotes = authorQuotes.slice(startIndex, endIndex);
+                
+                // Check if there are more quotes to load
+                authorHasMoreQuotes = endIndex < authorQuotes.length;
+                
+                // Create quote cards
+                const authorContainer = document.getElementById('author-quotes-container');
+                
+                currentPageQuotes.forEach((quote, index) => {
+                    authorContainer.appendChild(createQuoteCard(quote, startIndex + index, true));
+                });
+                
+                // Update loading state
+                isLoading = false;
+                document.getElementById('author-load-more').style.display = authorHasMoreQuotes ? 'block' : 'none';
+                
+                // Add event listeners to new elements
+                addEventListeners();
+                
+                // Increment current page for next load
+                authorCurrentPage++;
+            }, 500); // Small delay to simulate loading
+        }
+        
+        // Create a quote card element
+        function createQuoteCard(quote, absoluteIndex, isAuthorPage = false) {
+            const quoteCard = document.createElement('div');
+            quoteCard.className = 'quote-card';
+            
+            const tags = Array.isArray(quote.tags) 
+                ? quote.tags.map(tag => `<span class="tag">${tag}</span>`).join('')
+                : '';
+            
+            // Create author name with link unless we're already on an author page
+            const authorText = isAuthorPage 
+                ? `— ${quote.author}`
+                : `— <span class="author-link" data-author="${quote.author}">${quote.author}</span>`;
+            
+            quoteCard.innerHTML = `
+                <p class="quote-text">${quote.quote}</p>
+                <p class="quote-author">${authorText}</p>
+                <div class="tag-list">${tags}</div>
+                <div class="quote-actions">
+                    <div class="action-group">
+                        <button class="upvote-btn" data-id="${absoluteIndex}">
+                            ▲ <span class="upvote-count">${quote.upvotes}</span>
+                        </button>
+                    </div>
+                    <div class="action-group">
+                        <button class="show-similar-btn" data-id="${absoluteIndex}">
+                            Show Similar
+                        </button>
+                        <button class="explain-btn" data-id="${absoluteIndex}">
+                            Explain
+                        </button>
+                    </div>
+                </div>
+                <div class="explanation" id="explanation-${absoluteIndex}">
+                    ${quote.explanation || 'No explanation available.'}
+                </div>
+                <div class="similar-quotes" id="similar-${absoluteIndex}">
+                    <h4>Similar Quotes</h4>
+                    <div class="similar-container"></div>
+                </div>
+            `;
+            
+            return quoteCard;
+        }
+        
+        // Add event listeners to interactive elements
+        function addEventListeners() {
+            // Upvote buttons
+            document.querySelectorAll('.upvote-btn').forEach(btn => {
+                btn.addEventListener('click', handleUpvote);
+            });
+            
+            // Explanation buttons
+            document.querySelectorAll('.explain-btn').forEach(btn => {
+                btn.addEventListener('click', toggleExplanation);
+            });
+            
+            // Show similar buttons
+            document.querySelectorAll('.show-similar-btn').forEach(btn => {
+                btn.addEventListener('click', handleShowSimilar);
+            });
+            
+            // Author links
+            document.querySelectorAll('.author-link').forEach(link => {
+                link.addEventListener('click', (event) => {
+                    const authorName = event.currentTarget.getAttribute('data-author');
+                    showAuthorPage(authorName);
+                    
+                    // Update URL with author parameter
+                    const url = new URL(window.location);
+                    url.searchParams.set('author', encodeURIComponent(authorName));
+                    window.history.pushState({}, '', url);
+                });
+            });
+        }
+        
+        // Show author page
+        function showAuthorPage(authorName) {
+            currentAuthor = authorName;
+            
+            // Update author name in header
+            document.getElementById('author-name').textContent = authorName;
+            
+            // Filter quotes by author and sort by upvotes
+            authorQuotes = allQuotes
+                .filter(quote => quote.author === authorName)
+                .sort((a, b) => b.upvotes - a.upvotes);
+            
+            // Switch to author view
+            document.getElementById('main-view').classList.remove('active');
+            document.getElementById('author-view').classList.add('active');
+            
+            // Display author quotes
+            displayAuthorQuotes(true);
+        }
+        
         // Handle upvote button click
         function handleUpvote(event) {
             const btn = event.currentTarget;
-            const quoteIndex = btn.getAttribute('data-id');
+            const quoteIndex = parseInt(btn.getAttribute('data-id'));
             const countEl = btn.querySelector('.upvote-count');
             
             // Increase upvote count
@@ -322,7 +481,24 @@
             countEl.textContent = currentUpvotes;
             
             // Update the quote in the array
-            allQuotes[quoteIndex].upvotes = currentUpvotes;
+            if (document.getElementById('author-view').classList.contains('active')) {
+                // We're in author view, use the authorQuotes array
+                const localIndex = quoteIndex % quotesPerPage + (authorCurrentPage - 2) * quotesPerPage;
+                if (authorQuotes[localIndex]) {
+                    authorQuotes[localIndex].upvotes = currentUpvotes;
+                }
+                
+                // Also update in main quotes array
+                const originalIndex = allQuotes.findIndex(q => 
+                    q.quote === authorQuotes[localIndex].quote && q.author === authorQuotes[localIndex].author
+                );
+                if (originalIndex !== -1) {
+                    allQuotes[originalIndex].upvotes = currentUpvotes;
+                }
+            } else {
+                // Regular view
+                allQuotes[quoteIndex].upvotes = currentUpvotes;
+            }
             
             // Disable the button to prevent multiple upvotes
             btn.disabled = true;
@@ -380,12 +556,21 @@
             }
             
             // Get the current quote and its embedding
-            const currentQuote = allQuotes[quoteIndex];
+            let currentQuote;
+            if (document.getElementById('author-view').classList.contains('active')) {
+                // Author view - find quote in author quotes
+                const localIndex = quoteIndex % quotesPerPage + (authorCurrentPage - 2) * quotesPerPage;
+                currentQuote = authorQuotes[localIndex];
+            } else {
+                // Main view
+                currentQuote = allQuotes[quoteIndex];
+            }
+            
             const currentEmbedding = currentQuote.embedding;
             
             // Calculate similarity with all other quotes
             const similarQuotes = allQuotes
-                .filter((_, index) => index !== quoteIndex) // Exclude current quote
+                .filter(quote => quote.quote !== currentQuote.quote) // Exclude current quote
                 .map(quote => {
                     return {
                         ...quote,
@@ -404,11 +589,30 @@
                 similarQuotes.forEach(quote => {
                     const similarQuoteEl = document.createElement('div');
                     similarQuoteEl.className = 'similar-quote';
+                    
+                    // Add author link for similar quotes too
+                    const authorText = document.getElementById('author-view').classList.contains('active') && quote.author === currentAuthor
+                        ? `— ${quote.author}`
+                        : `— <span class="author-link" data-author="${quote.author}">${quote.author}</span>`;
+                    
                     similarQuoteEl.innerHTML = `
                         <p class="similar-text">${quote.quote}</p>
-                        <p class="similar-author">— ${quote.author} <span class="similarity-score">(${Math.round(quote.similarity * 100)}% match)</span></p>
+                        <p class="similar-author">${authorText} <span class="similarity-score">(${Math.round(quote.similarity * 100)}% match)</span></p>
                     `;
                     similarContainer.appendChild(similarQuoteEl);
+                });
+                
+                // Add event listeners to new author links
+                similarContainer.querySelectorAll('.author-link').forEach(link => {
+                    link.addEventListener('click', (event) => {
+                        const authorName = event.currentTarget.getAttribute('data-author');
+                        showAuthorPage(authorName);
+                        
+                        // Update URL with author parameter
+                        const url = new URL(window.location);
+                        url.searchParams.set('author', encodeURIComponent(authorName));
+                        window.history.pushState({}, '', url);
+                    });
                 });
             }
             
@@ -429,6 +633,17 @@
             });
         });
         
+        // Back button functionality
+        document.getElementById('back-to-feed').addEventListener('click', () => {
+            document.getElementById('author-view').classList.remove('active');
+            document.getElementById('main-view').classList.add('active');
+            
+            // Update URL to remove author parameter
+            const url = new URL(window.location);
+            url.searchParams.delete('author');
+            window.history.pushState({}, '', url);
+        });
+        
         // Helper function to shuffle array
         function shuffleArray(array) {
             const newArray = [...array];
@@ -441,7 +656,7 @@
         
         // Handle scroll event for infinite scrolling
         window.addEventListener('scroll', () => {
-            if (isLoading || !hasMoreQuotes) return;
+            if (isLoading) return;
             
             const scrollHeight = document.documentElement.scrollHeight;
             const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
@@ -449,7 +664,30 @@
             
             // Load more quotes when user scrolls near the bottom
             if (scrollTop + clientHeight >= scrollHeight - 300) {
-                displayQuotes();
+                if (document.getElementById('author-view').classList.contains('active')) {
+                    // Author view
+                    if (authorHasMoreQuotes) {
+                        displayAuthorQuotes();
+                    }
+                } else {
+                    // Main view
+                    if (hasMoreQuotes) {
+                        displayQuotes();
+                    }
+                }
+            }
+        });
+        
+        // Handle browser navigation (back/forward)
+        window.addEventListener('popstate', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const authorParam = urlParams.get('author');
+            
+            if (authorParam) {
+                showAuthorPage(decodeURIComponent(authorParam));
+            } else {
+                document.getElementById('author-view').classList.remove('active');
+                document.getElementById('main-view').classList.add('active');
             }
         });
         
