@@ -97,7 +97,7 @@
             display: flex;
             gap: 10px;
         }
-        .upvote-btn, .show-similar-btn, .explain-btn {
+        .upvote-btn, .show-similar-btn, .explain-btn, .share-btn {
             display: flex;
             align-items: center;
             gap: 5px;
@@ -106,7 +106,7 @@
             cursor: pointer;
             color: #555;
         }
-        .explain-btn, .show-similar-btn {
+        .explain-btn, .show-similar-btn, .share-btn {
             text-decoration: underline;
         }
         .explanation, .similar-quotes {
@@ -241,6 +241,20 @@
             border-radius: 8px;
             color: #666;
         }
+        .share-tooltip {
+            position: absolute;
+            background: #555;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .share-tooltip.visible {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -323,11 +337,72 @@
                 }
                 allQuotes = await response.json();
                 
-                // Check if we have an author in the URL
+                // Check if we have a quote ID in the URL
                 const urlParams = new URLSearchParams(window.location.search);
+                const quoteParam = urlParams.get('quote');
                 const authorParam = urlParams.get('author');
+                const searchParam = urlParams.get('search');
                 
-                if (authorParam) {
+                if (quoteParam) {
+                    // Find and display the specific quote
+                    const quote = allQuotes.find(q => q.id === quoteParam);
+                    if (quote) {
+                        // Create a temporary container to show just this quote
+                        document.getElementById('main-view').classList.remove('active');
+                        document.getElementById('author-view').classList.remove('active');
+                        document.getElementById('search-view').classList.remove('active');
+                        
+                        // Create a quote view if it doesn't exist
+                        let quoteView = document.getElementById('quote-view');
+                        if (!quoteView) {
+                            quoteView = document.createElement('div');
+                            quoteView.id = 'quote-view';
+                            quoteView.className = 'active';
+                            
+                            const quoteHeader = document.createElement('div');
+                            quoteHeader.className = 'search-header';
+                            quoteHeader.innerHTML = `
+                                <h2 class="search-title">Shared Quote</h2>
+                                <span class="back-btn" id="back-from-quote">← Back to Feed</span>
+                            `;
+                            
+                            const quoteContainer = document.createElement('div');
+                            quoteContainer.className = 'feed';
+                            quoteContainer.id = 'shared-quote-container';
+                            
+                            quoteView.appendChild(quoteHeader);
+                            quoteView.appendChild(quoteContainer);
+                            document.querySelector('.page-views').appendChild(quoteView);
+                            
+                            // Add event listener to back button
+                            document.getElementById('back-from-quote').addEventListener('click', () => {
+                                document.getElementById('quote-view').classList.remove('active');
+                                document.getElementById('main-view').classList.add('active');
+                                
+                                // Update URL to remove quote parameter
+                                const url = new URL(window.location);
+                                url.searchParams.delete('quote');
+                                window.history.pushState({}, '', url);
+                            });
+                        } else {
+                            quoteView.classList.add('active');
+                            document.getElementById('shared-quote-container').innerHTML = '';
+                        }
+                        
+                        // Add the quote to the container
+                        const quoteCard = createQuoteCard(quote, 0);
+                        document.getElementById('shared-quote-container').appendChild(quoteCard);
+                        
+                        // Add event listeners to the new elements
+                        addEventListeners();
+                    } else {
+                        // Quote not found, just show the feed
+                        displayQuotes(true);
+                    }
+                } else if (searchParam) {
+                    document.getElementById('search-input').value = decodeURIComponent(searchParam);
+                    performSearch(decodeURIComponent(searchParam));
+                } else if (authorParam) {
                     showAuthorPage(decodeURIComponent(authorParam));
                 } else {
                     displayQuotes(true);
@@ -523,6 +598,9 @@
                         <button class="explain-btn" data-id="${absoluteIndex}">
                             Explain
                         </button>
+                        <button class="share-btn" data-id="${absoluteIndex}" data-quote-id="${quote.id || ''}">
+                            Share
+                        </button>
                     </div>
                 </div>
                 <div class="explanation" id="explanation-${absoluteIndex}">
@@ -552,6 +630,11 @@
             // Show similar buttons
             document.querySelectorAll('.show-similar-btn').forEach(btn => {
                 btn.addEventListener('click', handleShowSimilar);
+            });
+            
+            // Share buttons
+            document.querySelectorAll('.share-btn').forEach(btn => {
+                btn.addEventListener('click', handleShare);
             });
             
             // Author links
@@ -757,6 +840,74 @@
             btn.textContent = 'Hide Similar';
         }
         
+        // Handle share button click
+        function handleShare(event) {
+            const btn = event.currentTarget;
+            const quoteIndex = parseInt(btn.getAttribute('data-id'));
+            const quoteId = btn.getAttribute('data-quote-id');
+            
+            // If no quote ID is available, don't proceed
+            if (!quoteId) {
+                console.error("This quote has no ID for sharing");
+                return;
+            }
+            
+            // Get the current quote
+            let currentQuote;
+            if (document.getElementById('author-view').classList.contains('active')) {
+                // Author view
+                const localIndex = quoteIndex % quotesPerPage + (authorCurrentPage - 2) * quotesPerPage;
+                currentQuote = authorQuotes[localIndex];
+            } else if (document.getElementById('search-view').classList.contains('active')) {
+                // Search view
+                const localIndex = quoteIndex % quotesPerPage + (searchCurrentPage - 2) * quotesPerPage;
+                currentQuote = searchResults[localIndex];
+            } else {
+                // Main view
+                currentQuote = allQuotes[quoteIndex];
+            }
+            
+            // Construct share URL
+            const shareUrl = `${window.location.origin}${window.location.pathname}?quote=${quoteId}`;
+            
+            // Try using Web Share API for mobile
+            if (navigator.share) {
+                navigator.share({
+                    title: `Quote by ${currentQuote.author}`,
+                    text: `"${currentQuote.quote}" — ${currentQuote.author}`,
+                    url: shareUrl
+                }).catch(error => console.log('Error sharing:', error));
+            } else {
+                // Fallback: copy to clipboard
+                navigator.clipboard.writeText(shareUrl).then(() => {
+                    // Show copied notification
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'share-tooltip';
+                    tooltip.textContent = 'Link copied to clipboard!';
+                    
+                    // Position the tooltip near the button
+                    const rect = btn.getBoundingClientRect();
+                    tooltip.style.left = `${rect.left}px`;
+                    tooltip.style.top = `${rect.bottom + 5}px`;
+                    
+                    document.body.appendChild(tooltip);
+                    
+                    // Show and then hide the tooltip
+                    setTimeout(() => {
+                        tooltip.classList.add('visible');
+                        setTimeout(() => {
+                            tooltip.classList.remove('visible');
+                            setTimeout(() => {
+                                document.body.removeChild(tooltip);
+                            }, 300);
+                        }, 2000);
+                    }, 10);
+                }).catch(err => {
+                    console.error('Failed to copy: ', err);
+                });
+            }
+        }
+        
         // Tab switching
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
@@ -835,14 +986,36 @@
             const urlParams = new URLSearchParams(window.location.search);
             const authorParam = urlParams.get('author');
             const searchParam = urlParams.get('search');
+            const quoteParam = urlParams.get('quote');
             
-            if (searchParam) {
+            if (quoteParam) {
+                // Find the quote by ID
+                const quote = allQuotes.find(q => q.id === quoteParam);
+                if (quote) {
+                    // Show the quote view
+                    document.getElementById('main-view').classList.remove('active');
+                    document.getElementById('author-view').classList.remove('active');
+                    document.getElementById('search-view').classList.remove('active');
+                    document.getElementById('quote-view').classList.add('active');
+                    
+                    // Clear and update the container
+                    document.getElementById('shared-quote-container').innerHTML = '';
+                    const quoteCard = createQuoteCard(quote, 0);
+                    document.getElementById('shared-quote-container').appendChild(quoteCard);
+                    
+                    // Add event listeners
+                    addEventListeners();
+                }
+            } else if (searchParam) {
                 performSearch(decodeURIComponent(searchParam));
             } else if (authorParam) {
                 showAuthorPage(decodeURIComponent(authorParam));
             } else {
                 document.getElementById('author-view').classList.remove('active');
                 document.getElementById('search-view').classList.remove('active');
+                if (document.getElementById('quote-view')) {
+                    document.getElementById('quote-view').classList.remove('active');
+                }
                 document.getElementById('main-view').classList.add('active');
             }
         });

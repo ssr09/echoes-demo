@@ -2,6 +2,7 @@ import os
 import csv
 import json
 import random
+import uuid
 from openai import OpenAI
 import re
 from dotenv import load_dotenv
@@ -77,9 +78,19 @@ def get_embedding(text):
     )
     return response.data[0].embedding
 
+def generate_unique_id(quote, author):
+    """Generate a unique ID for a quote based on its content and author."""
+    # Create a unique identifier using a hash of quote and author
+    unique_hash = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{quote}-{author}"))
+    # Use only the first 8 characters to keep it short but still unique
+    return f"q-{unique_hash[:8]}"
+
 def process_quote(quote, author, csv_writer, json_list):
     """Process a single quote and save it directly to avoid memory buildup."""
     print(f"Processing quote: {quote[:40]}...")
+    
+    # Generate unique ID
+    quote_id = generate_unique_id(quote, author)
     
     # Get explanation and tags
     explanation, tags = get_quote_data(quote)
@@ -93,6 +104,7 @@ def process_quote(quote, author, csv_writer, json_list):
     
     # Create quote object
     quote_obj = {
+        "id": quote_id,
         "quote": quote,
         "author": author,
         "explanation": explanation,
@@ -107,6 +119,7 @@ def process_quote(quote, author, csv_writer, json_list):
     
     # Write to CSV immediately
     csv_writer.writerow([
+        quote_id,
         quote,
         author,
         explanation,
@@ -133,7 +146,7 @@ def main():
     # Create CSV file and writer
     csv_file = open(output_csv, 'w', newline='', encoding='utf-8')
     csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(["quote", "author", "explanation", "tags", "upvotes", "popularity", "embedding"])
+    csv_writer.writerow(["id", "quote", "author", "explanation", "tags", "upvotes", "popularity", "embedding"])
     
     # Initialize JSON list
     quotes_data = []
