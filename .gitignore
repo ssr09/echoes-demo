@@ -1,0 +1,25 @@
+# First ignore everything
+*
+
+# Then un-ignore all files at root level
+!*.*
+!*/
+
+# But ignore these specific file types everywhere
+*.csv
+*.json
+*.txt
+
+# Re-ignore all contents of directories (keeping the directories themselves)
+*/*/
+
+# Optional: Common files to ignore
+.DS_Store
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/ 

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Echoes - Timeless Wisdom</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Georgia', serif;
+        }
+        body {
+            background-color: #f9f7f1;
+            color: #333;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        h1 {
+            font-size: 28px;
+            font-weight: normal;
+            margin-bottom: 10px;
+        }
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 8px 16px;
+            margin: 0 5px;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            font-size: 16px;
+            border-bottom: 2px solid transparent;
+        }
+        .tab.active {
+            border-bottom: 2px solid #555;
+        }
+        .feed {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+        .quote-card {
+            background-color: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s;
+        }
+        .quote-text {
+            font-size: 18px;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            quotes: """ """ "'" "'";
+        }
+        .quote-text::before {
+            content: open-quote;
+            color: #999;
+        }
+        .quote-text::after {
+            content: close-quote;
+            color: #999;
+        }
+        .quote-author {
+            text-align: right;
+            font-style: italic;
+            font-size: 16px;
+            color: #666;
+        }
+        .quote-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+        .action-group {
+            display: flex;
+            gap: 10px;
+        }
+        .upvote-btn, .show-similar-btn, .explain-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #555;
+        }
+        .explain-btn, .show-similar-btn {
+            text-decoration: underline;
+        }
+        .explanation, .similar-quotes {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+            font-size: 14px;
+            display: none;
+        }
+        .similar-quote {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .similar-quote:last-child {
+            margin-bottom: 0;
+            border-bottom: none;
+        }
+        .similar-text {
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        .similar-author {
+            font-style: italic;
+            font-size: 14px;
+            color: #666;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .tag {
+            font-size: 12px;
+            padding: 3px 8px;
+            background-color: #f0f0f0;
+            border-radius: 12px;
+            color: #666;
+        }
+        .similarity-score {
+            font-size: 12px;
+            color: #999;
+            margin-left: 5px;
+        }
+        #load-more {
+            text-align: center;
+            padding: 15px;
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Echoes</h1>
+        <p>Timeless wisdom from history's greatest thinkers</p>
+    </header>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="feed">Feed</button>
+        <button class="tab" data-tab="trending">Trending</button>
+        <button class="tab" data-tab="top">Top</button>
+    </div>
+
+    <div class="feed" id="feed-container">
+        <div class="loading">Loading quotes...</div>
+    </div>
+
+    <div id="load-more">
+        <div class="loading">Loading more quotes...</div>
+    </div>
+
+    <script>
+        // Global variables
+        let allQuotes = [];
+        let currentTab = 'feed';
+        let currentPage = 1;
+        const quotesPerPage = 10;
+        let isLoading = false;
+        let hasMoreQuotes = true;
+        
+        // Load quotes from the local JSON file
+        async function loadQuotes() {
+            try {
+                const response = await fetch('quotes.json');
+                if (!response.ok) {
+                    throw new Error('Failed to load quotes');
+                }
+                allQuotes = await response.json();
+                displayQuotes(true);
+            } catch (error) {
+                console.error('Error loading quotes:', error);
+                document.getElementById('feed-container').innerHTML = `
+                    <div class="error">
+                        <p>Failed to load quotes. Make sure quotes.json is in the same directory.</p>
+                        <p>Error: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Display quotes based on the current tab
+        function displayQuotes(reset = false) {
+            if (reset) {
+                const feedContainer = document.getElementById('feed-container');
+                feedContainer.innerHTML = '';
+                currentPage = 1;
+                hasMoreQuotes = true;
+            }
+            
+            if (!hasMoreQuotes || isLoading) return;
+            
+            isLoading = true;
+            document.getElementById('load-more').style.display = 'block';
+            
+            setTimeout(() => {
+                let quotesToShow = [...allQuotes];
+                
+                // Apply sorting based on current tab
+                if (currentTab === 'trending') {
+                    // Sort by upvotes for trending
+                    quotesToShow.sort((a, b) => b.upvotes - a.upvotes);
+                } else if (currentTab === 'top') {
+                    // Sort by popularity for top
+                    quotesToShow.sort((a, b) => b.popularity - a.popularity);
+                } else {
+                    // Random shuffle for feed
+                    quotesToShow = shuffleArray(quotesToShow);
+                }
+                
+                // Calculate pagination
+                const startIndex = (currentPage - 1) * quotesPerPage;
+                const endIndex = startIndex + quotesPerPage;
+                const currentPageQuotes = quotesToShow.slice(startIndex, endIndex);
+                
+                // Check if there are more quotes to load
+                hasMoreQuotes = endIndex < quotesToShow.length;
+                
+                // Create quote cards
+                const feedContainer = document.getElementById('feed-container');
+                
+                currentPageQuotes.forEach((quote, index) => {
+                    const quoteCard = document.createElement('div');
+                    quoteCard.className = 'quote-card';
+                    
+                    const tags = Array.isArray(quote.tags) 
+                        ? quote.tags.map(tag => `<span class="tag">${tag}</span>`).join('')
+                        : '';
+                    
+                    // Calculate the absolute index of the quote in the current display
+                    const absoluteIndex = startIndex + index;
+                    
+                    quoteCard.innerHTML = `
+                        <p class="quote-text">${quote.quote}</p>
+                        <p class="quote-author">— ${quote.author}</p>
+                        <div class="tag-list">${tags}</div>
+                        <div class="quote-actions">
+                            <div class="action-group">
+                                <button class="upvote-btn" data-id="${absoluteIndex}">
+                                    ▲ <span class="upvote-count">${quote.upvotes}</span>
+                                </button>
+                            </div>
+                            <div class="action-group">
+                                <button class="show-similar-btn" data-id="${absoluteIndex}">
+                                    Show Similar
+                                </button>
+                                <button class="explain-btn" data-id="${absoluteIndex}">
+                                    Explain
+                                </button>
+                            </div>
+                        </div>
+                        <div class="explanation" id="explanation-${absoluteIndex}">
+                            ${quote.explanation || 'No explanation available.'}
+                        </div>
+                        <div class="similar-quotes" id="similar-${absoluteIndex}">
+                            <h4>Similar Quotes</h4>
+                            <div class="similar-container"></div>
+                        </div>
+                    `;
+                    
+                    feedContainer.appendChild(quoteCard);
+                });
+                
+                // Update loading state
+                isLoading = false;
+                document.getElementById('load-more').style.display = hasMoreQuotes ? 'block' : 'none';
+                
+                // Add event listeners to new elements
+                document.querySelectorAll('.upvote-btn').forEach(btn => {
+                    btn.addEventListener('click', handleUpvote);
+                });
+                
+                document.querySelectorAll('.explain-btn').forEach(btn => {
+                    btn.addEventListener('click', toggleExplanation);
+                });
+                
+                document.querySelectorAll('.show-similar-btn').forEach(btn => {
+                    btn.addEventListener('click', handleShowSimilar);
+                });
+                
+                // Increment current page for next load
+                currentPage++;
+            }, 500); // Small delay to simulate loading
+        }
+        
+        // Handle upvote button click
+        function handleUpvote(event) {
+            const btn = event.currentTarget;
+            const quoteIndex = btn.getAttribute('data-id');
+            const countEl = btn.querySelector('.upvote-count');
+            
+            // Increase upvote count
+            let currentUpvotes = parseInt(countEl.textContent);
+            currentUpvotes++;
+            countEl.textContent = currentUpvotes;
+            
+            // Update the quote in the array
+            allQuotes[quoteIndex].upvotes = currentUpvotes;
+            
+            // Disable the button to prevent multiple upvotes
+            btn.disabled = true;
+            btn.style.opacity = 0.5;
+        }
+        
+        // Toggle explanation visibility
+        function toggleExplanation(event) {
+            const btn = event.currentTarget;
+            const quoteIndex = btn.getAttribute('data-id');
+            const explanationDiv = document.getElementById(`explanation-${quoteIndex}`);
+            
+            if (explanationDiv.style.display === 'block') {
+                explanationDiv.style.display = 'none';
+                btn.textContent = 'Explain';
+            } else {
+                explanationDiv.style.display = 'block';
+                btn.textContent = 'Hide Explanation';
+            }
+        }
+        
+        // Calculate cosine similarity between two vectors
+        function cosineSimilarity(vector1, vector2) {
+            let dotProduct = 0;
+            let magnitude1 = 0;
+            let magnitude2 = 0;
+            
+            for (let i = 0; i < vector1.length; i++) {
+                dotProduct += vector1[i] * vector2[i];
+                magnitude1 += vector1[i] * vector1[i];
+                magnitude2 += vector2[i] * vector2[i];
+            }
+            
+            magnitude1 = Math.sqrt(magnitude1);
+            magnitude2 = Math.sqrt(magnitude2);
+            
+            if (magnitude1 === 0 || magnitude2 === 0) {
+                return 0;
+            }
+            
+            return dotProduct / (magnitude1 * magnitude2);
+        }
+        
+        // Handle show similar button click
+        function handleShowSimilar(event) {
+            const btn = event.currentTarget;
+            const quoteIndex = parseInt(btn.getAttribute('data-id'));
+            const similarDiv = document.getElementById(`similar-${quoteIndex}`);
+            const similarContainer = similarDiv.querySelector('.similar-container');
+            
+            if (similarDiv.style.display === 'block') {
+                similarDiv.style.display = 'none';
+                btn.textContent = 'Show Similar';
+                return;
+            }
+            
+            // Get the current quote and its embedding
+            const currentQuote = allQuotes[quoteIndex];
+            const currentEmbedding = currentQuote.embedding;
+            
+            // Calculate similarity with all other quotes
+            const similarQuotes = allQuotes
+                .filter((_, index) => index !== quoteIndex) // Exclude current quote
+                .map(quote => {
+                    return {
+                        ...quote,
+                        similarity: cosineSimilarity(currentEmbedding, quote.embedding)
+                    };
+                })
+                .sort((a, b) => b.similarity - a.similarity) // Sort by similarity (highest first)
+                .slice(0, 3); // Get top 3 similar quotes
+            
+            // Display similar quotes
+            similarContainer.innerHTML = '';
+            
+            if (similarQuotes.length === 0) {
+                similarContainer.innerHTML = '<p>No similar quotes found.</p>';
+            } else {
+                similarQuotes.forEach(quote => {
+                    const similarQuoteEl = document.createElement('div');
+                    similarQuoteEl.className = 'similar-quote';
+                    similarQuoteEl.innerHTML = `
+                        <p class="similar-text">${quote.quote}</p>
+                        <p class="similar-author">— ${quote.author} <span class="similarity-score">(${Math.round(quote.similarity * 100)}% match)</span></p>
+                    `;
+                    similarContainer.appendChild(similarQuoteEl);
+                });
+            }
+            
+            similarDiv.style.display = 'block';
+            btn.textContent = 'Hide Similar';
+        }
+        
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Update active tab
+                document.querySelector('.tab.active').classList.remove('active');
+                tab.classList.add('active');
+                
+                // Update current tab and refresh display
+                currentTab = tab.getAttribute('data-tab');
+                displayQuotes(true); // Reset the feed when changing tabs
+            });
+        });
+        
+        // Helper function to shuffle array
+        function shuffleArray(array) {
+            const newArray = [...array];
+            for (let i = newArray.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+            }
+            return newArray;
+        }
+        
+        // Handle scroll event for infinite scrolling
+        window.addEventListener('scroll', () => {
+            if (isLoading || !hasMoreQuotes) return;
+            
+            const scrollHeight = document.documentElement.scrollHeight;
+            const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+            const clientHeight = document.documentElement.clientHeight;
+            
+            // Load more quotes when user scrolls near the bottom
+            if (scrollTop + clientHeight >= scrollHeight - 300) {
+                displayQuotes();
+            }
+        });
+        
+        // Load quotes when page loads
+        document.addEventListener('DOMContentLoaded', loadQuotes);
+    </script>
+</body>
+</html> 
