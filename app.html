@@ -194,12 +194,63 @@
         .page-views > div.active {
             display: block;
         }
+        .search-container {
+            display: flex;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+        .search-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .search-btn {
+            padding: 8px 16px;
+            background-color: #555;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .search-btn:hover {
+            background-color: #444;
+        }
+        .search-header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        .search-title {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .search-stats {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .no-results {
+            text-align: center;
+            padding: 30px;
+            background: white;
+            border-radius: 8px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <header>
         <h1>Echoes</h1>
         <p>Timeless wisdom from history's greatest thinkers</p>
+        <div class="search-container">
+            <input type="text" class="search-input" id="search-input" placeholder="Search quotes or authors...">
+            <button class="search-btn" id="search-btn">Search</button>
+        </div>
     </header>
 
     <div class="page-views">
@@ -231,6 +282,20 @@
                 <div class="loading">Loading more quotes...</div>
             </div>
         </div>
+        
+        <div id="search-view">
+            <div class="search-header">
+                <h2 class="search-title">Search Results</h2>
+                <p class="search-stats" id="search-stats">Showing results for: <span id="search-query"></span></p>
+                <span class="back-btn" id="back-from-search">← Back to Feed</span>
+            </div>
+            <div class="feed" id="search-results-container">
+                <div class="loading">Searching...</div>
+            </div>
+            <div id="search-load-more">
+                <div class="loading">Loading more results...</div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -240,11 +305,14 @@
         let currentPage = 1;
         let currentAuthor = '';
         let authorQuotes = [];
+        let searchResults = [];
         let authorCurrentPage = 1;
+        let searchCurrentPage = 1;
         const quotesPerPage = 10;
         let isLoading = false;
         let hasMoreQuotes = true;
         let authorHasMoreQuotes = true;
+        let searchHasMoreResults = true;
         
         // Load quotes from the local JSON file
         async function loadQuotes() {
@@ -373,6 +441,57 @@
             }, 500); // Small delay to simulate loading
         }
         
+        // Display search results
+        function displaySearchResults(reset = false) {
+            if (reset) {
+                const searchContainer = document.getElementById('search-results-container');
+                searchContainer.innerHTML = '';
+                searchCurrentPage = 1;
+                searchHasMoreResults = true;
+            }
+            
+            if (!searchHasMoreResults || isLoading) return;
+            
+            isLoading = true;
+            document.getElementById('search-load-more').style.display = 'block';
+            
+            setTimeout(() => {
+                // Calculate pagination for search results
+                const startIndex = (searchCurrentPage - 1) * quotesPerPage;
+                const endIndex = startIndex + quotesPerPage;
+                const currentPageResults = searchResults.slice(startIndex, endIndex);
+                
+                // Check if there are more results to load
+                searchHasMoreResults = endIndex < searchResults.length;
+                
+                // Create quote cards
+                const searchContainer = document.getElementById('search-results-container');
+                
+                if (currentPageResults.length === 0 && searchCurrentPage === 1) {
+                    searchContainer.innerHTML = `
+                        <div class="no-results">
+                            <p>No results found for your search.</p>
+                            <p>Try different keywords or phrases.</p>
+                        </div>
+                    `;
+                } else {
+                    currentPageResults.forEach((quote, index) => {
+                        searchContainer.appendChild(createQuoteCard(quote, startIndex + index));
+                    });
+                }
+                
+                // Update loading state
+                isLoading = false;
+                document.getElementById('search-load-more').style.display = searchHasMoreResults ? 'block' : 'none';
+                
+                // Add event listeners to new elements
+                addEventListeners();
+                
+                // Increment current page for next load
+                searchCurrentPage++;
+            }, 500); // Small delay to simulate loading
+        }
+        
         // Create a quote card element
         function createQuoteCard(quote, absoluteIndex, isAuthorPage = false) {
             const quoteCard = document.createElement('div');
@@ -495,6 +614,20 @@
                 if (originalIndex !== -1) {
                     allQuotes[originalIndex].upvotes = currentUpvotes;
                 }
+            } else if (document.getElementById('search-view').classList.contains('active')) {
+                // We're in search view, update the search results array
+                const localIndex = quoteIndex % quotesPerPage + (searchCurrentPage - 2) * quotesPerPage;
+                if (searchResults[localIndex]) {
+                    searchResults[localIndex].upvotes = currentUpvotes;
+                }
+                
+                // Also update in main quotes array
+                const originalIndex = allQuotes.findIndex(q => 
+                    q.quote === searchResults[localIndex].quote && q.author === searchResults[localIndex].author
+                );
+                if (originalIndex !== -1) {
+                    allQuotes[originalIndex].upvotes = currentUpvotes;
+                }
             } else {
                 // Regular view
                 allQuotes[quoteIndex].upvotes = currentUpvotes;
@@ -561,6 +694,10 @@
                 // Author view - find quote in author quotes
                 const localIndex = quoteIndex % quotesPerPage + (authorCurrentPage - 2) * quotesPerPage;
                 currentQuote = authorQuotes[localIndex];
+            } else if (document.getElementById('search-view').classList.contains('active')) {
+                // Search view - find quote in search results
+                const localIndex = quoteIndex % quotesPerPage + (searchCurrentPage - 2) * quotesPerPage;
+                currentQuote = searchResults[localIndex];
             } else {
                 // Main view
                 currentQuote = allQuotes[quoteIndex];
@@ -644,6 +781,16 @@
             window.history.pushState({}, '', url);
         });
         
+        document.getElementById('back-from-search').addEventListener('click', () => {
+            document.getElementById('search-view').classList.remove('active');
+            document.getElementById('main-view').classList.add('active');
+            
+            // Update URL to remove search parameter
+            const url = new URL(window.location);
+            url.searchParams.delete('search');
+            window.history.pushState({}, '', url);
+        });
+        
         // Helper function to shuffle array
         function shuffleArray(array) {
             const newArray = [...array];
@@ -669,6 +816,11 @@
                     if (authorHasMoreQuotes) {
                         displayAuthorQuotes();
                     }
+                } else if (document.getElementById('search-view').classList.contains('active')) {
+                    // Search view
+                    if (searchHasMoreResults) {
+                        displaySearchResults();
+                    }
                 } else {
                     // Main view
                     if (hasMoreQuotes) {
@@ -682,17 +834,121 @@
         window.addEventListener('popstate', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const authorParam = urlParams.get('author');
+            const searchParam = urlParams.get('search');
             
-            if (authorParam) {
+            if (searchParam) {
+                performSearch(decodeURIComponent(searchParam));
+            } else if (authorParam) {
                 showAuthorPage(decodeURIComponent(authorParam));
             } else {
                 document.getElementById('author-view').classList.remove('active');
+                document.getElementById('search-view').classList.remove('active');
                 document.getElementById('main-view').classList.add('active');
             }
         });
         
+        // Add search functionality
+        document.getElementById('search-btn').addEventListener('click', () => {
+            const query = document.getElementById('search-input').value;
+            performSearch(query);
+        });
+        
+        // Search on Enter key
+        document.getElementById('search-input').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                const query = document.getElementById('search-input').value;
+                performSearch(query);
+            }
+        });
+        
+        // Perform search
+        function performSearch(query) {
+            if (!query.trim()) return;
+            
+            // Update the search query display
+            document.getElementById('search-query').textContent = query;
+            
+            // Split query into words for better matching
+            const queryWords = query.toLowerCase().split(/\s+/).filter(word => word.length > 0);
+            
+            // Text matching score function
+            function getTextMatchScore(quote) {
+                const quoteText = quote.quote.toLowerCase();
+                const authorText = quote.author.toLowerCase();
+                
+                // Direct match in quote text or author name
+                let score = 0;
+                
+                // Check for full query match
+                if (quoteText.includes(query.toLowerCase())) {
+                    score += 10;
+                }
+                
+                if (authorText.includes(query.toLowerCase())) {
+                    score += 5;
+                }
+                
+                // Check for individual word matches
+                queryWords.forEach(word => {
+                    if (quoteText.includes(word)) {
+                        score += 2;
+                    }
+                    if (authorText.includes(word)) {
+                        score += 1;
+                    }
+                });
+                
+                return score;
+            }
+            
+            // Calculate embedding for the query (mock implementation)
+            // In a real app, you would call an API to get embeddings
+            const mockQueryEmbedding = Array(1536).fill(0).map(() => Math.random() * 2 - 1);
+            
+            // Get both text matches and semantic matches
+            searchResults = allQuotes.map(quote => {
+                const textMatchScore = getTextMatchScore(quote);
+                const semanticScore = quote.embedding ? cosineSimilarity(mockQueryEmbedding, quote.embedding) * 5 : 0;
+                
+                return {
+                    ...quote,
+                    matchScore: textMatchScore + semanticScore
+                };
+            })
+            .filter(quote => quote.matchScore > 0)
+            .sort((a, b) => b.matchScore - a.matchScore);
+            
+            // Show search results view
+            document.getElementById('main-view').classList.remove('active');
+            document.getElementById('author-view').classList.remove('active');
+            document.getElementById('search-view').classList.add('active');
+            
+            // Update search stats
+            document.getElementById('search-stats').innerHTML = 
+                `Found ${searchResults.length} results for: <strong>${query}</strong>`;
+            
+            // Display search results
+            displaySearchResults(true);
+            
+            // Update URL with search parameter
+            const url = new URL(window.location);
+            url.searchParams.set('search', encodeURIComponent(query));
+            window.history.pushState({}, '', url);
+        }
+        
         // Load quotes when page loads
-        document.addEventListener('DOMContentLoaded', loadQuotes);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadQuotes();
+            
+            // Check for search parameter in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const searchParam = urlParams.get('search');
+            
+            if (searchParam) {
+                document.getElementById('search-input').value = decodeURIComponent(searchParam);
+                // We'll perform the search after quotes are loaded in the loadQuotes function
+            }
+        });
     </script>
 </body>
 </html> 
