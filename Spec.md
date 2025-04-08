@@ -20,7 +20,6 @@ An infinite-scroll app where users read short-form excerpts from the greatest th
 - Each post includes:
   - Author name
   - Original quote/text (translated if needed)
-  - Source
   - Upvote and Share buttons (no comments, no replies)
   - Optionally - "Explain this post" and "Show me more like this" buttons
 
@@ -77,11 +76,9 @@ An infinite-scroll app where users read short-form excerpts from the greatest th
 - Stored as structured entries:
   ```
   {
-    "text": "...",
+    "quote": "...",
     "author": "Marcus Aurelius",
-    "work": "Meditations",
-    "language": "Greek",
-    "translated_by": "Gregory Hays"
+    ...
   }
   ```
 
